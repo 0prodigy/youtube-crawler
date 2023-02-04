@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,7 +14,9 @@ import (
 	"gorm.io/gorm"
 )
 
-var apiKey = os.Getenv("YOUTUBE_API_KEY")
+var apiKeys []string
+
+var apiKey string
 
 var log = logrus.New()
 
@@ -61,6 +63,16 @@ func fetchVideos(ctx context.Context, db *gorm.DB) {
 				Do()
 			if err != nil {
 				log.Fatalf("Error fetching videos from YouTube API: %v", err)
+				if strings.Contains(err.Error(), "quotaExceeded") {
+					log.Warn("API key limit exceeded, rotating API key")
+					if len(apiKeys) == 1 {
+						log.Fatal("No more API keys available")
+						return
+					}
+					apiKeys = append(apiKeys[1:], apiKey)
+					apiKey = apiKeys[0]
+				}
+
 			}
 
 			for _, item := range searchResponse.Items {
@@ -103,7 +115,6 @@ func getVideos(c *fiber.Ctx) error {
 		prev_page = 0
 	}
 
-	// return response
 	return c.JSON(fiber.Map{
 		"status":      "success",
 		"data":        videos,
@@ -119,7 +130,6 @@ func searchVideos(c *fiber.Ctx) error {
 	var videos []Video
 	db.Where("title LIKE ? OR description LIKE ?", "%"+query+"%", "%"+query+"%").Find(&videos).Limit(5).Order("publish_date DESC")
 
-	// return response
 	return c.JSON(fiber.Map{
 		"status": "success",
 		"data":   videos,
@@ -147,7 +157,12 @@ func init() {
 		log.Fatalf("Error loading .env file")
 	}
 	env, _ := godotenv.Read(".env")
-	apiKey = env["YOUTUBE_API_KEY"]
+	apiKeys = strings.Split(env["YOUTUBE_API_KEY"], ",")
+	if len(apiKeys) == 0 {
+		log.Fatalf("No YouTube API keys found")
+		panic("No YouTube API keys found")
+	}
+	apiKey = apiKeys[0]
 	log.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:    true,
 		TimestampFormat:  time.RFC3339Nano,
