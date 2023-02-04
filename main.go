@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/option"
@@ -78,16 +78,52 @@ func fetchVideos(ctx context.Context, db *gorm.DB) {
 
 }
 
+func getVideos(c *fiber.Ctx) error {
+	page := c.QueryInt("page", 1)
+	limit := c.QueryInt("limit", 10)
+	offset := (page - 1) * limit
+	log.Infof("Fetching videos from database page: %d, limit: %d", page, limit)
+	var videos []Video
+	db.Limit(limit).Offset(offset).Find(&videos)
+
+	var total int64
+	db.Model(&Video{}).Count(&total)
+
+	pages := int(total) / limit
+	if int(total)%limit != 0 {
+		pages++
+	}
+
+	next_page := page + 1
+	if next_page > pages {
+		next_page = 0
+	}
+	prev_page := page - 1
+	if prev_page < 1 {
+		prev_page = 0
+	}
+
+	// return response
+	return c.JSON(fiber.Map{
+		"status":      "success",
+		"data":        videos,
+		"next_page":   next_page,
+		"prev_page":   prev_page,
+		"total_pages": pages,
+	})
+}
+
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go fetchVideos(ctx, db)
+	// go fetchVideos(ctx, db)
 
-	// cancel switch to stop the fetchVideos
-	var input string
-	fmt.Scanln(&input)
-	cancel()
+	app := fiber.New()
+
+	app.Get("/videos", getVideos)
+
+	app.Listen(":8000")
 }
 
 func init() {
