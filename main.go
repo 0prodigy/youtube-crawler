@@ -117,7 +117,7 @@ func searchVideos(c *fiber.Ctx) error {
 	query := c.Query("q")
 	log.Infof("Searching videos from database with query: %s", query)
 	var videos []Video
-	db.Where("title LIKE ? OR description LIKE ?", "%"+query+"%", "%"+query+"%").Find(&videos).Order("publish_date DESC")
+	db.Where("title LIKE ? OR description LIKE ?", "%"+query+"%", "%"+query+"%").Find(&videos).Limit(5).Order("publish_date DESC")
 
 	// return response
 	return c.JSON(fiber.Map{
@@ -127,10 +127,10 @@ func searchVideos(c *fiber.Ctx) error {
 }
 
 func main() {
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// go fetchVideos(ctx, db)
+	go fetchVideos(ctx, db)
 
 	app := fiber.New()
 
