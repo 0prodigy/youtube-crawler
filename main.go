@@ -84,7 +84,7 @@ func getVideos(c *fiber.Ctx) error {
 	offset := (page - 1) * limit
 	log.Infof("Fetching videos from database page: %d, limit: %d", page, limit)
 	var videos []Video
-	db.Limit(limit).Offset(offset).Find(&videos)
+	db.Limit(limit).Offset(offset).Find(&videos).Order("publish_date DESC")
 
 	var total int64
 	db.Model(&Video{}).Count(&total)
@@ -113,6 +113,19 @@ func getVideos(c *fiber.Ctx) error {
 	})
 }
 
+func searchVideos(c *fiber.Ctx) error {
+	query := c.Query("q")
+	log.Infof("Searching videos from database with query: %s", query)
+	var videos []Video
+	db.Where("title LIKE ? OR description LIKE ?", "%"+query+"%", "%"+query+"%").Find(&videos).Order("publish_date DESC")
+
+	// return response
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data":   videos,
+	})
+}
+
 func main() {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -122,6 +135,7 @@ func main() {
 	app := fiber.New()
 
 	app.Get("/videos", getVideos)
+	app.Get("/search", searchVideos)
 
 	app.Listen(":8000")
 }
