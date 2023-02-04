@@ -10,11 +10,15 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/option"
 	"google.golang.org/api/youtube/v3"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 var apiKey = os.Getenv("YOUTUBE_API_KEY")
 
 var log = logrus.New()
+
+var db *gorm.DB
 
 const (
 	query    = "football"
@@ -23,14 +27,15 @@ const (
 
 // Video structure to store video details
 type Video struct {
-	ID          int64  `json:"id"`
+	gorm.Model
+	ID          int    `json:"id" gorm:"primary_key"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	PublishDate string `json:"publish_date"`
 	Thumbnails  string `json:"thumbnails"`
 }
 
-func fetchVideos(ctx context.Context) {
+func fetchVideos(ctx context.Context, db *gorm.DB) {
 	log.Info("Starting fetchVideos")
 	for {
 		select {
@@ -65,8 +70,7 @@ func fetchVideos(ctx context.Context) {
 					PublishDate: item.Snippet.PublishedAt,
 					Thumbnails:  item.Snippet.Thumbnails.High.Url,
 				}
-				fmt.Println(video)
-				fmt.Println("")
+				db.Create(&video)
 			}
 		}
 		time.Sleep(interval)
@@ -78,7 +82,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go fetchVideos(ctx)
+	go fetchVideos(ctx, db)
 
 	// cancel switch to stop the fetchVideos
 	var input string
@@ -101,4 +105,18 @@ func init() {
 		QuoteEmptyFields: true,
 	})
 	log.SetLevel(logrus.InfoLevel)
+
+	// Connect to the database
+	database_url := env["DATABASE_URL"]
+
+	db, err = gorm.Open(mysql.Open(database_url), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("Error connecting to database: %v", err)
+	}
+	log.Info("Connected to database")
+
+	// Migrate the schema
+	db.AutoMigrate(&Video{})
+	log.Info("Database migrated")
+
 }
